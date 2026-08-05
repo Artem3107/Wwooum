@@ -1,19 +1,56 @@
 @echo off
-:: Проверка прав администратора
+chcp 65001 > nul
+title Уничтожитель Заблокированных Файлов
+
+:: Проверка на права админа, без них ни черта не выйдет
 net session >nul 2>&1
 if %errorLevel% neq 0 (
-    echo [!] СУКА, ЗАПУСТИ ОТ ИМЕНИ АДМИНИСТРАТОРА!
+    echo [!] ЭЙ! Запусти этот батник ОТ ИМЕНИ АДМИНИСТРАТОРА!
+    echo [!] Кликни правой кнопкой мыши по файлу -> Запуск от имени администратора.
     pause
-    exit
+    exit /b
 )
 
-cd /d "%~dp0"
+echo [+] Начинаем зачистку...
+echo [+] Жестко убиваем процесс winws.exe...
+taskkill /f /im winws.exe >nul 2>&1
 
-echo [!] ЗАПУСКАЕМ ОБХОД БЛОКИРОВОК...
-echo [!] НЕ ЗАКРЫВАЙ ЭТО ОКНО, ПОКА НУЖЕН СВОБОДНЫЙ ИНТЕРНЕТ!
+echo [+] Сносим службы и драйверы Zapret...
+sc stop zapret >nul 2>&1
+sc delete zapret >nul 2>&1
+sc stop windivert >nul 2>&1
+sc delete windivert >nul 2>&1
+taskkill /f /im windivert* >nul 2>&1
+
 echo.
+echo [+] Отлично! Теперь просто перетащи ту самую вредную папку прямо в это окно консоли
+set /p target_dir="[+] Или вставь путь вручную и нажми Enter: "
 
-:: Рабочая комбинация для winws (дурим провайдера по полной)
-winws.exe --wf-l3=ipv4,ipv6 --wf-tcp=80,443 --wf-udp=443 --filter-udp=443 --dpi-desync=fake --dpi-desync-repeats=6 --filter-tcp=80,443 --dpi-desync=fake,split2 --dpi-desync-split-pos=1 --dpi-desync-fooling=md5sig
+:: Очищаем путь от кавычек, если ты просто перетащил папку в окно
+set "target_dir=%target_dir:"=%"
+
+if not exist "%target_dir%" (
+    echo [!] Слышь, такого пути не существует. Проверь, че ты туда вставил!
+    pause
+    exit /b
+)
+
+echo [+] Выбиваем все процессы, которые посмели использовать эту папку...
+powershell -Command "$dir = '%target_dir%'; Get-Process | Where-Object { $_.Path -like \"$dir*\" -or $_.MainModule.FileName -like \"$dir*\" } | Stop-Process -Force" >nul 2>&1
+
+echo [+] Сносим папку под корень...
+rd /s /q "%target_dir%"
+
+if exist "%target_dir%" (
+    echo [-] Хм, обычный делит не сработал. Пробуем зачистку файлов изнутри...
+    del /f /q /s "%target_dir%\*.*" >nul 2>&1
+    rd /s /q "%target_dir%"
+)
+
+if not exist "%target_dir%" (
+    echo [+++] Готово! Папка стерта к чертям, больше никто не выябывается!
+) else (
+    echo [!] Черт, какая-то системная дичь все еще блокирует папку. Попробуй перезагрузить комп и запустить этот батник снова.
+)
 
 pause
