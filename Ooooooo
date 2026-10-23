@@ -80,7 +80,9 @@ local ok, err = pcall(function()
 end)
 if not ok then warn("Ошибка: " .. tostring(err)) end
 
+-- ==========================================
 -- 4. Добавление режима "Down"
+-- ==========================================
 task.spawn(function()
     while not (getgenv().Abysall and getgenv().Abysall.Interface and getgenv().Abysall.Interface.Library) do
         task.wait(0.5)
@@ -118,7 +120,6 @@ task.spawn(function()
             local Root = Char and Char:FindFirstChild("HumanoidRootPart")
             if Root then
                 DownVelocity.Parent = Root
-                -- ИЗМЕНЕНО ЗДЕСЬ: Вместо -50 теперь -2.25 (как в оригинальном Velocity)
                 DownVelocity.Velocity = Vector3.new(0, -2.25, 0) 
             end
         else
@@ -126,3 +127,75 @@ task.spawn(function()
         end
     end)
 end)
+
+-- ==========================================
+-- 5. Добавление кнопки "Anti Sally" в меню Exploits
+-- ==========================================
+task.spawn(function()
+    while not (getgenv().Abysall and getgenv().Abysall.Interface and getgenv().Abysall.Interface.Library) do
+        task.wait(0.5)
+    end
+    
+    local Library = getgenv().Abysall.Interface.Library
+    local Tabs = Library.Tabs
+    
+    -- Ищем вкладку Exploits
+    local ExploitsTab = Tabs and (Tabs.Exploits or Tabs["Exploits"])
+    
+    if ExploitsTab then
+        -- Создаем новую группу справа в этой вкладке
+        local CustomGroup = ExploitsTab:AddRightGroupbox("Custom Removers")
+        
+        -- Добавляем тоггл
+        local SallyToggle = CustomGroup:AddToggle("AntiSallyHard", {
+            Text = "Remove Sally (Delete)",
+            Default = false,
+            Tooltip = "Мгновенно удаляет Салли при спавне."
+        })
+
+        local active = false
+        
+        -- Функция удаления
+        local function DeleteSally(obj)
+            if obj and obj.Name == "SallyMoving" then
+                task.wait(0.1)
+                if obj and obj.Parent then
+                    obj:Destroy()
+                    print("[Anti-Sally] Салли успешно удалена!")
+                end
+            end
+        end
+
+        -- Логика при включении/выключении
+        SallyToggle:OnChanged(function(val)
+            active = val
+            if val then
+                -- Если включили и она уже на карте
+                for _, obj in ipairs(workspace:GetChildren()) do
+                    DeleteSally(obj)
+                end
+            end
+        end)
+
+        -- Слушатель появления в Workspace
+        workspace.ChildAdded:Connect(function(child)
+            if active and child.Name == "SallyMoving" then
+                DeleteSally(child)
+            end
+        end)
+
+        -- Слушатель появления внутри текущих комнат
+        local CurrentRooms = workspace:FindFirstChild("CurrentRooms")
+        if CurrentRooms then
+            CurrentRooms.DescendantAdded:Connect(function(child)
+                if active and child.Name == "SallyMoving" then
+                    DeleteSally(child)
+                end
+            end)
+        end
+        
+        print("[Custom] Кнопка Anti Sally добавлена в меню!")
+    else
+        warn("[Custom] Не удалось найти вкладку Exploits для добавления Anti-Sally.")
+    end
+end)here
