@@ -4,25 +4,26 @@ getgenv().Abysall = nil
 local MY_INFO_URL = "https://raw.githubusercontent.com/Artem3107/Wwooum/refs/heads/main/MyInfo.luau"
 local MAIN_URL = "https://raw.githubusercontent.com/therealcookiemonsterof1966/AbysallContinued/main/Games/Doors/Main.luau"
 
--- 1. Подмена InfoTab (ИСПРАВЛЕНО: game:HttpGet вместо game.HttpGet)
-local oldHttpGet = game.HttpGet
-game.HttpGet = function(self, url, ...)
-    if type(url) == "string" and string.find(url, "InfoTab") then
-        print("[Patch] Успешная подмена InfoTab!")
-        return oldHttpGet(self, MY_INFO_URL .. "?nocache=" .. os.time(), ...)
-    end
-    return oldHttpGet(self, url, ...)
-end
-
--- 2. Фиксы Screech и PromptGate
 local mt = getrawmetatable(game)
 local oldNamecall = mt.__namecall
 local oldNewIndex = mt.__newindex
 local oldIndex = mt.__index
 setreadonly(mt, false)
 
+-- ГЛАВНЫЙ ХУК (ловит и Screech, и HttpGet, и PromptGate)
 mt.__namecall = newcclosure(function(self, ...)
     local method = getnamecallmethod()
+    local args = {...}
+
+    -- 1. Подмена InfoTab (перехватываем вызов game:HttpGet)
+    if method == "HttpGet" and self == game then
+        if type(args[1]) == "string" and string.find(args[1], "Components/InfoTab%.luau") then
+            print("[Patch] Успешная подмена InfoTab!")
+            return oldNamecall(self, MY_INFO_URL .. "?nocache=" .. os.time())
+        end
+    end
+
+    -- 2. Фикс Screech (не даем удалить модель)
     if method == "Destroy" then
         local ok, name = pcall(function() return self.Name end)
         local okP, parent = pcall(function() return self.Parent end)
@@ -31,15 +32,23 @@ mt.__namecall = newcclosure(function(self, ...)
                 for _, desc in ipairs(self:GetDescendants()) do
                     if desc:IsA("BasePart") then
                         desc.CanTouch = false; desc.CanCollide = false; desc.Transparency = 1
-                    end
+                    elseif desc:IsA("Sound") then desc.Volume = 0 end
                 end
             end)
             return nil
         end
     end
+
+    -- 3. Фикс PromptGate (ошибка lacking capability)
+    if method == "new" and self == Instance then
+        local env = getfenv(2)
+        if env and env.script and env.script.Name == "PromptGate" then return nil end
+    end
+
     return oldNamecall(self, ...)
 end)
 
+-- Фикс Screech (Parent = nil)
 mt.__newindex = newcclosure(function(self, key, value)
     if key == "Parent" and value == nil then
         local ok, name = pcall(function() return self.Name end)
@@ -51,6 +60,7 @@ mt.__newindex = newcclosure(function(self, key, value)
     return oldNewIndex(self, key, value)
 end)
 
+-- Блокировка Instance для PromptGate
 local dummyInstance = setmetatable({}, { __index = function(_, k) return function() return nil end end })
 mt.__index = newcclosure(function(self, key)
     if key == "Instance" then
@@ -59,9 +69,10 @@ mt.__index = newcclosure(function(self, key)
     end
     return oldIndex(self, key)
 end)
+
 setreadonly(mt, true)
 
--- 3. Загрузка хаба
+-- Загрузка хаба
 print("[Loader] Загрузка хаба...")
 local ok, err = pcall(function()
     local src = game:HttpGet(MAIN_URL .. "?t=" .. os.time())
@@ -77,6 +88,7 @@ task.spawn(function()
     local Library = getgenv().Abysall.Interface.Library
     local Options = Library.Options
     local Toggles = Library.Toggles
+    
     if Options.VelocityManipulationMode then
         pcall(function()
             local currentVals = Options.VelocityManipulationMode.Values
@@ -90,10 +102,12 @@ task.spawn(function()
             end
         end)
     end
+    
     local RunService = game:GetService("RunService")
     local LP = game:GetService("Players").LocalPlayer
     local DownVelocity = Instance.new("BodyVelocity")
     DownVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+    
     RunService.RenderStepped:Connect(function()
         if not (Toggles.VelocityManipulationToggle and Toggles.VelocityManipulationToggle.Value) then 
             if DownVelocity.Parent then DownVelocity.Parent = nil end
