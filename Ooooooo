@@ -1,99 +1,80 @@
---[[
-    Abysall Custom Loader (Artem3107 Edition)
-    - Подменяет InfoTab на кастомный
-    - Фиксит ошибку Screech
-    - Фиксит ошибку PromptGate
-]]
-
--- 1) Сброс флагов
 shared.Hastelepasta = nil
 getgenv().Abysall = nil
 
--- 2) Твои ссылки
 local MY_INFO_URL = "https://raw.githubusercontent.com/Artem3107/Wwooum/refs/heads/main/MyInfo.luau"
 local MAIN_URL = "https://raw.githubusercontent.com/therealcookiemonsterof1966/AbysallContinued/main/Games/Doors/Main.luau"
 
--- 3) Установка хуков
-local canHook = getrawmetatable and setreadonly and newcclosure and getnamecallmethod
-
-if canHook then
-    local mt = getrawmetatable(game)
-    local oldNamecall = mt.__namecall
-    local oldNewIndex = mt.__newindex
-    setreadonly(mt, false)
-
-    mt.__namecall = newcclosure(function(self, ...)
-        local method = getnamecallmethod()
-        local args = {...}
-        
-        -- ФИКС 1: Подмена InfoTab при скачивании
-        if method == "HttpGet" and self == game then
-            if type(args[1]) == "string" and args[1]:find("Components/InfoTab") then
-                print("[Patch] Загружаем кастомный InfoTab (Artem3107)...")
-                return oldNamecall(self, MY_INFO_URL)
-            end
-        end
-
-        -- ФИКС 2: Защита от удаления Screech
-        if method == "Destroy" then
-            local okName, name = pcall(function() return self.Name end)
-            local okPar, parent = pcall(function() return self.Parent end)
-            if okName and okPar and name == "Screech" and parent and parent.Name == "Camera" then
-                pcall(function()
-                    for _, desc in ipairs(self:GetDescendants()) do
-                        if desc:IsA("BasePart") then
-                            desc.CanTouch = false; desc.CanCollide = false; desc.CanQuery = false; desc.Transparency = 1
-                        elseif desc:IsA("Sound") then desc.Volume = 0
-                        elseif desc:IsA("Decal") or desc:IsA("Texture") then desc.Transparency = 1
-                        elseif desc:IsA("BillboardGui") or desc:IsA("SurfaceGui") then desc.Enabled = false
-                        elseif desc:IsA("Light") then desc.Enabled = false
-                        end
-                    end
-                end)
-                return nil
-            end
-        end
-
-        -- ФИКС 3: Блокировка краша PromptGate (lacking capability)
-        if method == "new" and self == Instance then
-            local env = getfenv(2)
-            if env and env.script and env.script.Name == "PromptGate" then 
-                return nil 
-            end
-        end
-        
-        return oldNamecall(self, ...)
-    end)
-
-    -- ФИКС 4: Защита RemoteEvent Screech от Parent = nil
-    mt.__newindex = newcclosure(function(self, key, value)
-        if key == "Parent" and value == nil then
-            local okName, name = pcall(function() return self.Name end)
-            local okRem, isRemote = pcall(function() return self:IsA("RemoteEvent") end)
-            if okName and okRem and name == "Screech" and isRemote then
-                local hidden = (gethui and gethui()) or game:GetService("CoreGui")
-                return oldNewIndex(self, key, hidden)
-            end
-        end
-        return oldNewIndex(self, key, value)
-    end)
-    
-    setreadonly(mt, true)
-    print("[Abysall Fix] Все хуки успешно установлены.")
-else
-    warn("[Abysall Fix] getrawmetatable недоступен — запуск без фиксов.")
+-- 1. Подмена InfoTab
+local oldHttpGet = game.HttpGet
+game.HttpGet = function(self, url, ...)
+    if type(url) == "string" and string.find(url, "InfoTab") then
+        print("[Patch] Успешная подмена InfoTab!")
+        return oldHttpGet(self, MY_INFO_URL .. "?nocache=" .. os.time(), ...)
+    end
+    return oldHttpGet(self, url, ...)
 end
 
--- 4) Загрузка основного скрипта
-print("[Abysall Fix] Загрузка хаба...")
-local ok, err = pcall(function()
-    local src = game:HttpGet(MAIN_URL)
-    if not src or #src < 100000 then
-        error("Не удалось скачать полный скрипт. Длина: " .. tostring(src and #src or "nil"))
+-- 2. Фиксы
+local mt = getrawmetatable(game)
+local oldNamecall = mt.__namecall
+local oldNewIndex = mt.__newindex
+local oldIndex = mt.__index
+setreadonly(mt, false)
+
+-- Фикс Screech
+mt.__namecall = newcclosure(function(self, ...)
+    local method = getnamecallmethod()
+    if method == "Destroy" then
+        local ok, name = pcall(function() return self.Name end)
+        local okP, parent = pcall(function() return self.Parent end)
+        if ok and okP and name == "Screech" and parent and parent.Name == "Camera" then
+            pcall(function()
+                for _, desc in ipairs(self:GetDescendants()) do
+                    if desc:IsA("BasePart") then
+                        desc.CanTouch = false; desc.CanCollide = false; desc.Transparency = 1
+                    end
+                end
+            end)
+            return nil
+        end
     end
-    loadstring(src)()
+    return oldNamecall(self, ...)
 end)
 
-if not ok then
-    warn("[Abysall Fix] Ошибка: " .. tostring(err))
-end
+mt.__newindex = newcclosure(function(self, key, value)
+    if key == "Parent" and value == nil then
+        local ok, name = pcall(function() return self.Name end)
+        if ok and name == "Screech" and self:IsA("RemoteEvent") then
+            local hidden = (gethui and gethui()) or game:GetService("CoreGui")
+            return oldNewIndex(self, key, hidden)
+        end
+    end
+    return oldNewIndex(self, key, value)
+end)
+
+-- НОВЫЙ ФИКС: Блокируем доступ к Instance для PromptGate
+local dummyInstance = setmetatable({}, {
+    __index = function(_, k)
+        return function() return nil end
+    end
+})
+
+mt.__index = newcclosure(function(self, key)
+    if key == "Instance" then
+        local env = getfenv(2)
+        if env and env.script and env.script.Name == "PromptGate" then
+            return dummyInstance
+        end
+    end
+    return oldIndex(self, key)
+end)
+
+setreadonly(mt, true)
+
+-- 3. Загрузка хаба
+print("[Loader] Загрузка хаба...")
+local ok, err = pcall(function()
+    local src = game:HttpGet(MAIN_URL .. "?t=" .. os.time())
+    loadstring(src)()
+end)
+if not ok then warn("Ошибка: " .. tostring(err)) end
