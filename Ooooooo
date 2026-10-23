@@ -1,21 +1,40 @@
 shared.Hastelepasta = nil
 getgenv().Abysall = nil
+
 local MY_INFO_URL = "https://raw.githubusercontent.com/Artem3107/Wwooum/refs/heads/main/MyInfo.luau"
 local MAIN_URL = "https://raw.githubusercontent.com/therealcookiemonsterof1966/AbysallContinued/main/Games/Doors/Main.luau"
+
+-- ==========================================
+-- ФИКС PROMPTGATE (через блокировку require)
+-- ==========================================
+local oldRequire = require
+require = function(module)
+    if type(module) == "Instance" and module.Name == "PromptGate" then
+        return {}
+    end
+    return oldRequire(module)
+end
+print("[Fix] PromptGate заблокирован. Спама ошибок не будет.")
+
 local mt = getrawmetatable(game)
 local oldNamecall = mt.__namecall
 local oldNewIndex = mt.__newindex
-local oldIndex = mt.__index
 setreadonly(mt, false)
+
+-- ГЛАВНЫЙ ХУК (InfoTab и Screech)
 mt.__namecall = newcclosure(function(self, ...)
     local method = getnamecallmethod()
     local args = {...}
+
+    -- 1. Подмена InfoTab
     if method == "HttpGet" and self == game then
         if type(args[1]) == "string" and string.find(args[1], "Components/InfoTab%.luau") then
             print("[Patch] Успешная подмена InfoTab!")
             return oldNamecall(self, MY_INFO_URL .. "?nocache=" .. os.time())
         end
     end
+
+    -- 2. Фикс Screech
     if method == "Destroy" then
         local ok, name = pcall(function() return self.Name end)
         local okP, parent = pcall(function() return self.Parent end)
@@ -30,12 +49,11 @@ mt.__namecall = newcclosure(function(self, ...)
             return nil
         end
     end
-    if method == "new" and self == Instance then
-        local env = getfenv(2)
-        if env and env.script and env.script.Name == "PromptGate" then return nil end
-    end
+
     return oldNamecall(self, ...)
 end)
+
+-- Фикс Screech (Parent)
 mt.__newindex = newcclosure(function(self, key, value)
     if key == "Parent" and value == nil then
         local ok, name = pcall(function() return self.Name end)
@@ -46,15 +64,10 @@ mt.__newindex = newcclosure(function(self, key, value)
     end
     return oldNewIndex(self, key, value)
 end)
-local dummyInstance = setmetatable({}, { __index = function(_, k) return function() return nil end end })
-mt.__index = newcclosure(function(self, key)
-    if key == "Instance" then
-        local env = getfenv(2)
-        if env and env.script and env.script.Name == "PromptGate" then return dummyInstance end
-    end
-    return oldIndex(self, key)
-end)
+
 setreadonly(mt, true)
+
+-- Загрузка хаба
 print("[Loader] Загрузка хаба...")
 local ok, err = pcall(function()
     local src = game:HttpGet(MAIN_URL .. "?t=" .. os.time())
@@ -62,6 +75,9 @@ local ok, err = pcall(function()
 end)
 if not ok then warn("Ошибка: " .. tostring(err)) end
 
+-- ==========================================
+-- 4. Добавление режимов "Down" и "Up"
+-- ==========================================
 task.spawn(function()
     while not (getgenv().Abysall and getgenv().Abysall.Interface and getgenv().Abysall.Interface.Library) do
         task.wait(0.5)
@@ -69,41 +85,52 @@ task.spawn(function()
     local Library = getgenv().Abysall.Interface.Library
     local Options = Library.Options
     local Toggles = Library.Toggles
+    
     if Options.VelocityManipulationMode then
         pcall(function()
             local currentVals = Options.VelocityManipulationMode.Values
-            local hasDown = false
+            local hasDown, hasUp = false, false
             for _, v in ipairs(currentVals) do
-                if v == "Down" then hasDown = true break end
+                if v == "Down" then hasDown = true end
+                if v == "Up" then hasUp = true end
             end
-            if not hasDown then
-                table.insert(currentVals, "Down")
-                Options.VelocityManipulationMode:SetValues(currentVals)
-            end
+            if not hasDown then table.insert(currentVals, "Down") end
+            if not hasUp then table.insert(currentVals, "Up") end
+            Options.VelocityManipulationMode:SetValues(currentVals)
         end)
     end
+    
     local RunService = game:GetService("RunService")
     local LP = game:GetService("Players").LocalPlayer
     local DownVelocity = Instance.new("BodyVelocity")
     DownVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+    
     RunService.RenderStepped:Connect(function()
         if not (Toggles.VelocityManipulationToggle and Toggles.VelocityManipulationToggle.Value) then 
             if DownVelocity.Parent then DownVelocity.Parent = nil end
             return 
         end
-        if Options.VelocityManipulationMode and Options.VelocityManipulationMode.Value == "Down" then
-            local Char = LP.Character
-            local Root = Char and Char:FindFirstChild("HumanoidRootPart")
-            if Root then
+        
+        local Char = LP.Character
+        local Root = Char and Char:FindFirstChild("HumanoidRootPart")
+        
+        if Root then
+            if Options.VelocityManipulationMode and Options.VelocityManipulationMode.Value == "Down" then
                 DownVelocity.Parent = Root
-                DownVelocity.Velocity = Vector3.new(0, -2.25, 0) 
+                DownVelocity.Velocity = Vector3.new(0, -2.25, 0)
+            elseif Options.VelocityManipulationMode and Options.VelocityManipulationMode.Value == "Up" then
+                DownVelocity.Parent = Root
+                DownVelocity.Velocity = Vector3.new(0, 2.25, 0)
+            else
+                if DownVelocity.Parent then DownVelocity.Parent = nil end
             end
-        else
-            if DownVelocity.Parent then DownVelocity.Parent = nil end
         end
     end)
 end)
 
+-- ==========================================
+-- 5. Добавление кнопки "Anti Sally"
+-- ==========================================
 task.spawn(function()
     while not (getgenv().Abysall and getgenv().Abysall.Interface and getgenv().Abysall.Interface.Library) do
         task.wait(0.5)
