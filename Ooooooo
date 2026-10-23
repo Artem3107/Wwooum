@@ -10,12 +10,12 @@ local oldNewIndex = mt.__newindex
 local oldIndex = mt.__index
 setreadonly(mt, false)
 
--- ГЛАВНЫЙ ХУК (ловит и Screech, и HttpGet, и PromptGate)
+-- ГЛАВНЫЙ ХУК (InfoTab, Screech, PromptGate)
 mt.__namecall = newcclosure(function(self, ...)
     local method = getnamecallmethod()
     local args = {...}
 
-    -- 1. Подмена InfoTab (перехватываем вызов game:HttpGet)
+    -- 1. Подмена InfoTab
     if method == "HttpGet" and self == game then
         if type(args[1]) == "string" and string.find(args[1], "Components/InfoTab%.luau") then
             print("[Patch] Успешная подмена InfoTab!")
@@ -23,7 +23,7 @@ mt.__namecall = newcclosure(function(self, ...)
         end
     end
 
-    -- 2. Фикс Screech (не даем удалить модель)
+    -- 2. Фикс Screech
     if method == "Destroy" then
         local ok, name = pcall(function() return self.Name end)
         local okP, parent = pcall(function() return self.Parent end)
@@ -39,7 +39,7 @@ mt.__namecall = newcclosure(function(self, ...)
         end
     end
 
-    -- 3. Фикс PromptGate (ошибка lacking capability)
+    -- 3. Фикс PromptGate
     if method == "new" and self == Instance then
         local env = getfenv(2)
         if env and env.script and env.script.Name == "PromptGate" then return nil end
@@ -48,7 +48,7 @@ mt.__namecall = newcclosure(function(self, ...)
     return oldNamecall(self, ...)
 end)
 
--- Фикс Screech (Parent = nil)
+-- Фикс Screech (Parent)
 mt.__newindex = newcclosure(function(self, key, value)
     if key == "Parent" and value == nil then
         local ok, name = pcall(function() return self.Name end)
@@ -118,7 +118,8 @@ task.spawn(function()
             local Root = Char and Char:FindFirstChild("HumanoidRootPart")
             if Root then
                 DownVelocity.Parent = Root
-                DownVelocity.Velocity = Vector3.new(0, -50, 0)
+                -- ИЗМЕНЕНО ЗДЕСЬ: Вместо -50 теперь -2.25 (как в оригинальном Velocity)
+                DownVelocity.Velocity = Vector3.new(0, -2.25, 0) 
             end
         else
             if DownVelocity.Parent then DownVelocity.Parent = nil end
