@@ -198,4 +198,4 @@ task.spawn(function()
     else
         warn("[Custom] Не удалось найти вкладку Exploits для добавления Anti-Sally.")
     end
-end)here
+end)
