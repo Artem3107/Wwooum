@@ -1,36 +1,40 @@
 --[[
-    Abysall Doors — Screech Bug Fix Patcher
-    Запускает Abysall с хуками, предотвращающими ошибку
-    "Screech:98: attempt to index nil with 'CFrame'"
-    
-    Причина ошибки: чит уничтожает модель Screech,
-    а модуль игры продолжает каждый кадр обращаться
-    к её частям → nil.CFrame → спам ошибок → лаги.
-    
-    Фикс: не даём уничтожать модель, только прячем её;
-    а RemoteEvent Screech не отправляем в nil.
+    Abysall Custom Loader (Artem3107 Edition)
+    - Подменяет InfoTab на кастомный
+    - Фиксит ошибку Screech
+    - Фиксит ошибку PromptGate
 ]]
 
--- 1) Сброс флагов от предыдущих (упавших) запусков
+-- 1) Сброс флагов
 shared.Hastelepasta = nil
 getgenv().Abysall = nil
 
--- 2) URL полного скрипта
+-- 2) Твои ссылки
+local MY_INFO_URL = "https://raw.githubusercontent.com/Artem3107/Wwooum/refs/heads/main/MyInfo.luau"
 local MAIN_URL = "https://raw.githubusercontent.com/therealcookiemonsterof1966/AbysallContinued/main/Games/Doors/Main.luau"
 
--- 3) Проверка доступности хуков
+-- 3) Установка хуков
 local canHook = getrawmetatable and setreadonly and newcclosure and getnamecallmethod
 
 if canHook then
     local mt = getrawmetatable(game)
     local oldNamecall = mt.__namecall
     local oldNewIndex = mt.__newindex
-
     setreadonly(mt, false)
 
-    -- Хук 1: Screech:Destroy() -> скрыть, не уничтожать
     mt.__namecall = newcclosure(function(self, ...)
         local method = getnamecallmethod()
+        local args = {...}
+        
+        -- ФИКС 1: Подмена InfoTab при скачивании
+        if method == "HttpGet" and self == game then
+            if type(args[1]) == "string" and args[1]:find("Components/InfoTab") then
+                print("[Patch] Загружаем кастомный InfoTab (Artem3107)...")
+                return oldNamecall(self, MY_INFO_URL)
+            end
+        end
+
+        -- ФИКС 2: Защита от удаления Screech
         if method == "Destroy" then
             local okName, name = pcall(function() return self.Name end)
             local okPar, parent = pcall(function() return self.Parent end)
@@ -38,29 +42,30 @@ if canHook then
                 pcall(function()
                     for _, desc in ipairs(self:GetDescendants()) do
                         if desc:IsA("BasePart") then
-                            desc.CanTouch = false
-                            desc.CanCollide = false
-                            desc.CanQuery = false
-                            desc.Transparency = 1
-                        elseif desc:IsA("Decal") or desc:IsA("Texture") then
-                            desc.Transparency = 1
-                        elseif desc:IsA("BillboardGui") or desc:IsA("SurfaceGui") then
-                            desc.Enabled = false
-                        elseif desc:IsA("PointLight") or desc:IsA("SpotLight") or desc:IsA("SurfaceLight") then
-                            desc.Enabled = false
-                        elseif desc:IsA("Sound") then
-                            desc.Volume = 0
+                            desc.CanTouch = false; desc.CanCollide = false; desc.CanQuery = false; desc.Transparency = 1
+                        elseif desc:IsA("Sound") then desc.Volume = 0
+                        elseif desc:IsA("Decal") or desc:IsA("Texture") then desc.Transparency = 1
+                        elseif desc:IsA("BillboardGui") or desc:IsA("SurfaceGui") then desc.Enabled = false
+                        elseif desc:IsA("Light") then desc.Enabled = false
                         end
                     end
                 end)
-                -- Съедаем Destroy — модель остаётся живой для модуля игры
                 return nil
             end
         end
+
+        -- ФИКС 3: Блокировка краша PromptGate (lacking capability)
+        if method == "new" and self == Instance then
+            local env = getfenv(2)
+            if env and env.script and env.script.Name == "PromptGate" then 
+                return nil 
+            end
+        end
+        
         return oldNamecall(self, ...)
     end)
 
-    -- Хук 2: Screech_Real.Parent = nil -> скрытая папка вместо nil
+    -- ФИКС 4: Защита RemoteEvent Screech от Parent = nil
     mt.__newindex = newcclosure(function(self, key, value)
         if key == "Parent" and value == nil then
             local okName, name = pcall(function() return self.Name end)
@@ -72,19 +77,19 @@ if canHook then
         end
         return oldNewIndex(self, key, value)
     end)
-
+    
     setreadonly(mt, true)
-    print("[Abysall Fix] Хуки установлены (Destroy + Parent)")
+    print("[Abysall Fix] Все хуки успешно установлены.")
 else
-    warn("[Abysall Fix] getrawmetatable недоступен — запуск без фикса Screech")
+    warn("[Abysall Fix] getrawmetatable недоступен — запуск без фиксов.")
 end
 
--- 4) Загрузка полного скрипта
+-- 4) Загрузка основного скрипта
 print("[Abysall Fix] Загрузка хаба...")
 local ok, err = pcall(function()
     local src = game:HttpGet(MAIN_URL)
     if not src or #src < 100000 then
-        error("Не удалось скачать полный скрипт (404 или обрезан). Длина: " .. tostring(src and #src or "nil"))
+        error("Не удалось скачать полный скрипт. Длина: " .. tostring(src and #src or "nil"))
     end
     loadstring(src)()
 end)
