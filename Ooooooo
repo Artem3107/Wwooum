@@ -1,29 +1,21 @@
 shared.Hastelepasta = nil
 getgenv().Abysall = nil
-
 local MY_INFO_URL = "https://raw.githubusercontent.com/Artem3107/Wwooum/refs/heads/main/MyInfo.luau"
 local MAIN_URL = "https://raw.githubusercontent.com/therealcookiemonsterof1966/AbysallContinued/main/Games/Doors/Main.luau"
-
 local mt = getrawmetatable(game)
 local oldNamecall = mt.__namecall
 local oldNewIndex = mt.__newindex
 local oldIndex = mt.__index
 setreadonly(mt, false)
-
--- ГЛАВНЫЙ ХУК (InfoTab, Screech, PromptGate)
 mt.__namecall = newcclosure(function(self, ...)
     local method = getnamecallmethod()
     local args = {...}
-
-    -- 1. Подмена InfoTab
     if method == "HttpGet" and self == game then
         if type(args[1]) == "string" and string.find(args[1], "Components/InfoTab%.luau") then
             print("[Patch] Успешная подмена InfoTab!")
             return oldNamecall(self, MY_INFO_URL .. "?nocache=" .. os.time())
         end
     end
-
-    -- 2. Фикс Screech
     if method == "Destroy" then
         local ok, name = pcall(function() return self.Name end)
         local okP, parent = pcall(function() return self.Parent end)
@@ -38,17 +30,12 @@ mt.__namecall = newcclosure(function(self, ...)
             return nil
         end
     end
-
-    -- 3. Фикс PromptGate
     if method == "new" and self == Instance then
         local env = getfenv(2)
         if env and env.script and env.script.Name == "PromptGate" then return nil end
     end
-
     return oldNamecall(self, ...)
 end)
-
--- Фикс Screech (Parent)
 mt.__newindex = newcclosure(function(self, key, value)
     if key == "Parent" and value == nil then
         local ok, name = pcall(function() return self.Name end)
@@ -59,8 +46,6 @@ mt.__newindex = newcclosure(function(self, key, value)
     end
     return oldNewIndex(self, key, value)
 end)
-
--- Блокировка Instance для PromptGate
 local dummyInstance = setmetatable({}, { __index = function(_, k) return function() return nil end end })
 mt.__index = newcclosure(function(self, key)
     if key == "Instance" then
@@ -69,10 +54,7 @@ mt.__index = newcclosure(function(self, key)
     end
     return oldIndex(self, key)
 end)
-
 setreadonly(mt, true)
-
--- Загрузка хаба
 print("[Loader] Загрузка хаба...")
 local ok, err = pcall(function()
     local src = game:HttpGet(MAIN_URL .. "?t=" .. os.time())
@@ -80,9 +62,6 @@ local ok, err = pcall(function()
 end)
 if not ok then warn("Ошибка: " .. tostring(err)) end
 
--- ==========================================
--- 4. Добавление режима "Down"
--- ==========================================
 task.spawn(function()
     while not (getgenv().Abysall and getgenv().Abysall.Interface and getgenv().Abysall.Interface.Library) do
         task.wait(0.5)
@@ -90,7 +69,6 @@ task.spawn(function()
     local Library = getgenv().Abysall.Interface.Library
     local Options = Library.Options
     local Toggles = Library.Toggles
-    
     if Options.VelocityManipulationMode then
         pcall(function()
             local currentVals = Options.VelocityManipulationMode.Values
@@ -104,12 +82,10 @@ task.spawn(function()
             end
         end)
     end
-    
     local RunService = game:GetService("RunService")
     local LP = game:GetService("Players").LocalPlayer
     local DownVelocity = Instance.new("BodyVelocity")
     DownVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-    
     RunService.RenderStepped:Connect(function()
         if not (Toggles.VelocityManipulationToggle and Toggles.VelocityManipulationToggle.Value) then 
             if DownVelocity.Parent then DownVelocity.Parent = nil end
@@ -128,34 +104,21 @@ task.spawn(function()
     end)
 end)
 
--- ==========================================
--- 5. Добавление кнопки "Anti Sally" в меню Exploits
--- ==========================================
 task.spawn(function()
     while not (getgenv().Abysall and getgenv().Abysall.Interface and getgenv().Abysall.Interface.Library) do
         task.wait(0.5)
     end
-    
     local Library = getgenv().Abysall.Interface.Library
     local Tabs = Library.Tabs
-    
-    -- Ищем вкладку Exploits
     local ExploitsTab = Tabs and (Tabs.Exploits or Tabs["Exploits"])
-    
     if ExploitsTab then
-        -- Создаем новую группу справа в этой вкладке
         local CustomGroup = ExploitsTab:AddRightGroupbox("Custom Removers")
-        
-        -- Добавляем тоггл
         local SallyToggle = CustomGroup:AddToggle("AntiSallyHard", {
             Text = "Remove Sally (Delete)",
             Default = false,
             Tooltip = "Мгновенно удаляет Салли при спавне."
         })
-
         local active = false
-        
-        -- Функция удаления
         local function DeleteSally(obj)
             if obj and obj.Name == "SallyMoving" then
                 task.wait(0.1)
@@ -165,26 +128,19 @@ task.spawn(function()
                 end
             end
         end
-
-        -- Логика при включении/выключении
         SallyToggle:OnChanged(function(val)
             active = val
             if val then
-                -- Если включили и она уже на карте
                 for _, obj in ipairs(workspace:GetChildren()) do
                     DeleteSally(obj)
                 end
             end
         end)
-
-        -- Слушатель появления в Workspace
         workspace.ChildAdded:Connect(function(child)
             if active and child.Name == "SallyMoving" then
                 DeleteSally(child)
             end
         end)
-
-        -- Слушатель появления внутри текущих комнат
         local CurrentRooms = workspace:FindFirstChild("CurrentRooms")
         if CurrentRooms then
             CurrentRooms.DescendantAdded:Connect(function(child)
@@ -193,9 +149,8 @@ task.spawn(function()
                 end
             end)
         end
-        
         print("[Custom] Кнопка Anti Sally добавлена в меню!")
     else
-        warn("[Custom] Не удалось найти вкладку Exploits для добавления Anti-Sally.")
+        warn("[Custom] Не удалось найти вкладку Exploits.")
     end
 end)
