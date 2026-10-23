@@ -1,80 +1,94 @@
--- ============================================
--- Abysall Screech Bug Fix (safety net)
--- Запускай ЭТОТ скрипт ВМЕСТО твоей шапки loadstring
--- ============================================
+--[[
+    Abysall Doors — Screech Bug Fix Patcher
+    Запускает Abysall с хуками, предотвращающими ошибку
+    "Screech:98: attempt to index nil with 'CFrame'"
+    
+    Причина ошибки: чит уничтожает модель Screech,
+    а модуль игры продолжает каждый кадр обращаться
+    к её частям → nil.CFrame → спам ошибок → лаги.
+    
+    Фикс: не даём уничтожать модель, только прячем её;
+    а RemoteEvent Screech не отправляем в nil.
+]]
 
--- 1) Сброс флага, если прошлый запуск упал
+-- 1) Сброс флагов от предыдущих (упавших) запусков
 shared.Hastelepasta = nil
 getgenv().Abysall = nil
 
--- 2) Хук 1: не даём хабу уничтожать модель Screech
---    (вместо Destroy — прячем и отключаем касание)
-if getrawmetatable and newcclosure and getnamecallmethod then
+-- 2) URL полного скрипта
+local MAIN_URL = "https://raw.githubusercontent.com/therealcookiemonsterof1966/AbysallContinued/main/Games/Doors/Main.luau"
+
+-- 3) Проверка доступности хуков
+local canHook = getrawmetatable and setreadonly and newcclosure and getnamecallmethod
+
+if canHook then
     local mt = getrawmetatable(game)
-    local oldNC = mt.__namecall
+    local oldNamecall = mt.__namecall
+    local oldNewIndex = mt.__newindex
+
     setreadonly(mt, false)
+
+    -- Хук 1: Screech:Destroy() -> скрыть, не уничтожать
     mt.__namecall = newcclosure(function(self, ...)
         local method = getnamecallmethod()
-        if method == "Destroy" and type(self) == "Instance"
-            and self.Name == "Screech"
-        then
-            local p = self.Parent
-            if p and p.Name == "Camera" then
-                for _, d in ipairs(self:GetDescendants()) do
-                    if d:IsA("BasePart") then
-                        d.Transparency = 1
-                        d.CanTouch = false
-                        d.CanCollide = false
-                        d.CanQuery = false
+        if method == "Destroy" then
+            local okName, name = pcall(function() return self.Name end)
+            local okPar, parent = pcall(function() return self.Parent end)
+            if okName and okPar and name == "Screech" and parent and parent.Name == "Camera" then
+                pcall(function()
+                    for _, desc in ipairs(self:GetDescendants()) do
+                        if desc:IsA("BasePart") then
+                            desc.CanTouch = false
+                            desc.CanCollide = false
+                            desc.CanQuery = false
+                            desc.Transparency = 1
+                        elseif desc:IsA("Decal") or desc:IsA("Texture") then
+                            desc.Transparency = 1
+                        elseif desc:IsA("BillboardGui") or desc:IsA("SurfaceGui") then
+                            desc.Enabled = false
+                        elseif desc:IsA("PointLight") or desc:IsA("SpotLight") or desc:IsA("SurfaceLight") then
+                            desc.Enabled = false
+                        elseif desc:IsA("Sound") then
+                            desc.Volume = 0
+                        end
                     end
-                end
-                return nil -- съедаем Destroy, модель остаётся живой для модуля игры
+                end)
+                -- Съедаем Destroy — модель остаётся живой для модуля игры
+                return nil
             end
         end
-        return oldNC(self, ...)
+        return oldNamecall(self, ...)
     end)
-    setreadonly(mt, true)
-    print("[Fix] Destroy-hook установлен")
-else
-    warn("[Fix] Нет getrawmetatable — Destroy-hook пропущен")
-end
 
--- 3) Хук 2: не даём хабу отправлять Screech-ремоут в nil
---    (кидаем в gethui/CoreGui — модуль найдёт его, ошибки не будет)
-if getrawmetatable and newcclosure then
-    local mt = getrawmetatable(game)
-    local oldNI = mt.__newindex
-    setreadonly(mt, false)
+    -- Хук 2: Screech_Real.Parent = nil -> скрытая папка вместо nil
     mt.__newindex = newcclosure(function(self, key, value)
-        if key == "Parent" and value == nil
-            and typeof(self) == "Instance"
-            and self:IsA("RemoteEvent")
-            and self.Name == "Screech"
-        then
-            local hidden = (gethui and gethui()) or game:GetService("CoreGui")
-            return oldNI(self, key, hidden)
+        if key == "Parent" and value == nil then
+            local okName, name = pcall(function() return self.Name end)
+            local okRem, isRemote = pcall(function() return self:IsA("RemoteEvent") end)
+            if okName and okRem and name == "Screech" and isRemote then
+                local hidden = (gethui and gethui()) or game:GetService("CoreGui")
+                return oldNewIndex(self, key, hidden)
+            end
         end
-        return oldNI(self, key, value)
+        return oldNewIndex(self, key, value)
     end)
+
     setreadonly(mt, true)
-    print("[Fix] Parent-hook установлен")
+    print("[Abysall Fix] Хуки установлены (Destroy + Parent)")
 else
-    warn("[Fix] Нет getrawmetatable — Parent-hook пропущен")
+    warn("[Abysall Fix] getrawmetatable недоступен — запуск без фикса Screech")
 end
 
--- 4) Загружаем твой оригинальный Abysall как обычно
-local BaseUrl = "https://raw.githubusercontent.com/therealcookiemonsterof1966/AbysallContinued/main/"
-
--- ВАЖНО: путь ниже замени на СВОЙ полный файл с GitHub.
--- Если у тебя есть полный (не обрезанный) файл на GitHub — используй его.
--- Если нет — сначала исправь свой репозиторий (см. инструкцию ниже),
--- потому что тот файл, что сейчас лежит на Artem3107/Wwooum/Ooooooo, ОБРЕЗАН
--- на строке "Water Bypass removed: Softlock" и не скомпилируется.
-local MainURL = "ВСТАВЬ_СЮДА_RAW_ССЫЛКУ_НА_ПОЛНЫЙ_ФАЙЛ"
-
+-- 4) Загрузка полного скрипта
+print("[Abysall Fix] Загрузка хаба...")
 local ok, err = pcall(function()
-    loadstring(game:HttpGet(MainURL))()
+    local src = game:HttpGet(MAIN_URL)
+    if not src or #src < 100000 then
+        error("Не удалось скачать полный скрипт (404 или обрезан). Длина: " .. tostring(src and #src or "nil"))
+    end
+    loadstring(src)()
 end)
+
 if not ok then
-    warn("[Fix] Ошибка загрузки хаба: " .. tostring(err))
+    warn("[Abysall Fix] Ошибка: " .. tostring(err))
 end
