@@ -1,17 +1,10 @@
---[[
-    Abysall Custom Loader (Artem3107 Edition)
-    - Подменяет InfoTab
-    - Фиксит Screech и PromptGate
-    - Добавляет режим "Down" в Velocity Manipulation
-]]
-
 shared.Hastelepasta = nil
 getgenv().Abysall = nil
 
 local MY_INFO_URL = "https://raw.githubusercontent.com/Artem3107/Wwooum/refs/heads/main/MyInfo.luau"
 local MAIN_URL = "https://raw.githubusercontent.com/therealcookiemonsterof1966/AbysallContinued/main/Games/Doors/Main.luau"
 
--- 1. Подмена InfoTab
+-- 1. Подмена InfoTab (ИСПРАВЛЕНО: game:HttpGet вместо game.HttpGet)
 local oldHttpGet = game.HttpGet
 game.HttpGet = function(self, url, ...)
     if type(url) == "string" and string.find(url, "InfoTab") then
@@ -58,9 +51,7 @@ mt.__newindex = newcclosure(function(self, key, value)
     return oldNewIndex(self, key, value)
 end)
 
-local dummyInstance = setmetatable({}, {
-    __index = function(_, k) return function() return nil end end
-})
+local dummyInstance = setmetatable({}, { __index = function(_, k) return function() return nil end end })
 mt.__index = newcclosure(function(self, key)
     if key == "Instance" then
         local env = getfenv(2)
@@ -78,58 +69,41 @@ local ok, err = pcall(function()
 end)
 if not ok then warn("Ошибка: " .. tostring(err)) end
 
--- ==========================================
--- 4. ДОБАВЛЕНИЕ РЕЖИМА "DOWN"
--- ==========================================
+-- 4. Добавление режима "Down"
 task.spawn(function()
-    -- Ждем, пока Abysall загрузит интерфейс
     while not (getgenv().Abysall and getgenv().Abysall.Interface and getgenv().Abysall.Interface.Library) do
         task.wait(0.5)
     end
-
     local Library = getgenv().Abysall.Interface.Library
     local Options = Library.Options
     local Toggles = Library.Toggles
-
-    -- Добавляем "Down" в выпадающий список
     if Options.VelocityManipulationMode then
         pcall(function()
-            -- Получаем текущие значения и добавляем "Down", если его нет
             local currentVals = Options.VelocityManipulationMode.Values
             local hasDown = false
             for _, v in ipairs(currentVals) do
                 if v == "Down" then hasDown = true break end
             end
-            
             if not hasDown then
                 table.insert(currentVals, "Down")
                 Options.VelocityManipulationMode:SetValues(currentVals)
             end
         end)
-        print("[Patch] Режим 'Down' добавлен в Velocity Manipulation!")
     end
-
-    -- Логика для режима Down
     local RunService = game:GetService("RunService")
-    local Players = game:GetService("Players")
-    local LP = Players.LocalPlayer
+    local LP = game:GetService("Players").LocalPlayer
     local DownVelocity = Instance.new("BodyVelocity")
     DownVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-    DownVelocity.P = 1250
-
     RunService.RenderStepped:Connect(function()
         if not (Toggles.VelocityManipulationToggle and Toggles.VelocityManipulationToggle.Value) then 
             if DownVelocity.Parent then DownVelocity.Parent = nil end
             return 
         end
-        
         if Options.VelocityManipulationMode and Options.VelocityManipulationMode.Value == "Down" then
             local Char = LP.Character
             local Root = Char and Char:FindFirstChild("HumanoidRootPart")
-            
             if Root then
                 DownVelocity.Parent = Root
-                -- Толкаем вниз со скоростью 50 стадов в секунду
                 DownVelocity.Velocity = Vector3.new(0, -50, 0)
             end
         else
