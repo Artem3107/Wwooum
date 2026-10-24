@@ -11,7 +11,7 @@ local oldIndex = mt.__index
 setreadonly(mt, false)
 
 -- ==========================================
--- ГЛАВНЫЙ ХУК (InfoTab, Screech, PromptGate, Sally)
+-- ГЛАВНЫЙ ХУК (InfoTab, Screech, PromptGate, Sally, InfCrucifix)
 -- ==========================================
 mt.__namecall = newcclosure(function(self, ...)
     local method = getnamecallmethod()
@@ -25,7 +25,7 @@ mt.__namecall = newcclosure(function(self, ...)
         end
     end
 
-    -- 2. Блокировка Instance для PromptGate (убирает lacking capability)
+    -- 2. Блокировка Instance для PromptGate
     if method == "new" and self == Instance then
         local env = getfenv(2)
         if env and env.script and env.script.Name == "PromptGate" then return nil end
@@ -47,9 +47,45 @@ mt.__namecall = newcclosure(function(self, ...)
         end
     end
 
-    -- 4. Блокировка урона от Салли (перехват RemoteEvent)
+    -- 4. Блокировка урона от Салли
     if (self.Name == "SallyFace" or self.Name == "SallyFace_Real") and (method == "FireServer" or method == "InvokeServer") then
         return nil
+    end
+
+    -- 5. УЛУЧШЕННЫЙ ИНФИНИТИ КРЕСТ (Nova Hub Logic)
+    if method == "FireServer" and self.Name == "DropItem" then
+        local Tool = args[1]
+        if Tool and Tool.Name == "Crucifix" then
+            local Abysall = getgenv().Abysall
+            -- Проверяем, включен ли оригинальный тоггл InfCrucifix в Abysall
+            if Abysall and Abysall.Interface and Abysall.Interface.Library and Abysall.Interface.Library.Toggles.InfCrucifix and Abysall.Interface.Library.Toggles.InfCrucifix.Value then
+                task.spawn(function()
+                    local LP = game:GetService("Players").LocalPlayer
+                    local StartTime = tick()
+                    local FireFunc = fireproximityprompt
+                    
+                    -- Цикл из Nova Hub: ищем крест каждые 0.01 сек
+                    repeat
+                        task.wait(0.01)
+                        local Drops = workspace:FindFirstChild("Drops")
+                        if Drops then
+                            local Drop = Drops:FindFirstChild("Crucifix")
+                            if Drop then
+                                local Prompt = Drop:FindFirstChildOfClass("ProximityPrompt")
+                                if Prompt and Prompt.Enabled then
+                                    if FireFunc then
+                                        FireFunc(Prompt)
+                                    else
+                                        Prompt:InputHoldBegin()
+                                        Prompt:InputHoldEnd()
+                                    end
+                                end
+                            end
+                        end
+                    until (LP.Character and LP.Character:FindFirstChild("Crucifix")) or (tick() - StartTime) > 1.2
+                end)
+            end
+        end
     end
 
     return oldNamecall(self, ...)
@@ -67,7 +103,7 @@ mt.__newindex = newcclosure(function(self, key, value)
     return oldNewIndex(self, key, value)
 end)
 
--- ЗАЩИТА ОТ PROMPTGATE (тот самый блок, который ты удалил)
+-- ЗАЩИТА ОТ PROMPTGATE
 local dummyInstance = setmetatable({}, { __index = function(_, k) return function() return nil end end })
 mt.__index = newcclosure(function(self, key)
     if key == "Instance" then
@@ -78,7 +114,7 @@ mt.__index = newcclosure(function(self, key)
 end)
 
 setreadonly(mt, true)
-print("[Fix] Все хуки (InfoTab, Screech, PromptGate) установлены.")
+print("[Fix] Все хуки (InfoTab, Screech, PromptGate, InfCrucifix) установлены.")
 
 -- Загрузка хаба
 print("[Loader] Загрузка хаба...")
@@ -142,7 +178,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- 5. Anti Sally (v5.1 - UI Safe + Event Blocker)
+-- 5. Anti Sally (v5.1 - UI Safe)
 -- ==========================================
 task.spawn(function()
     while not (getgenv().Abysall and getgenv().Abysall.Interface and getgenv().Abysall.Interface.Library) do
@@ -157,14 +193,13 @@ task.spawn(function()
         local SallyToggle = CustomGroup:AddToggle("AntiSallyHard", {
             Text = "Anti Sally (UI Safe)",
             Default = false,
-            Tooltip = "Скрывает Салли и блокирует её урон, не ломая UI игры."
+            Tooltip = "Скрывает Салли и блокирует её урон."
         })
         
         local function HideAndNeutralizeSally(obj)
             if obj and obj.Name == "SallyMoving" then
                 task.wait(0.1)
                 if obj and obj.Parent then
-                    -- Отключаем касания, чтобы она не могла задеть физически
                     for _, desc in ipairs(obj:GetDescendants()) do
                         if desc:IsA("BasePart") then
                             desc.CanTouch = false
@@ -173,7 +208,7 @@ task.spawn(function()
                         elseif desc:IsA("Sound") then desc.Volume = 0 
                         elseif desc:IsA("BillboardGui") or desc:IsA("SurfaceGui") then desc.Enabled = false end
                     end
-                    print("[Anti-Sally] Салли обезврежена и скрыта (урон заблокирован хуком).")
+                    print("[Anti-Sally] Салли обезврежена и скрыта.")
                 end
             end
         end
@@ -200,8 +235,6 @@ task.spawn(function()
                 end
             end)
         end
-        print("[Custom] Кнопка Anti Sally (UI Safe) добавлена в меню!")
-    else
-        warn("[Custom] Не удалось найти вкладку Exploits.")
+        print("[Custom] Кнопка Anti Sally добавлена в меню!")
     end
 end)
